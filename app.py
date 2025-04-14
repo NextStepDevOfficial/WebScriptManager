@@ -1,4 +1,4 @@
-from flask import Flask, render_template, redirect, url_for, Response
+from flask import Flask, render_template, redirect, url_for, Response, request
 import os
 import subprocess
 import logging
@@ -29,12 +29,22 @@ def save_autostart_settings(settings):
 def discover_scripts():
     scripts = {}
     for filename in os.listdir(SCRIPTS_DIR):
-        if filename.endswith('.py'):
+        script_path = os.path.join(SCRIPTS_DIR, filename)
+        if os.path.isfile(script_path) and filename.endswith('.py'):
             script_name = filename[:-3]
             scripts[script_name] = {
-                'path': os.path.join(SCRIPTS_DIR, filename),
+                'path': script_path,
                 'status': 'stopped',
-                'log_file': f'logs/{script_name}.log'
+                'log_file': f'logs/{script_name}.log',
+                'args': []  # Default empty arguments
+            }
+        elif os.path.isdir(script_path) and os.path.exists(os.path.join(script_path, '__main__.py')):
+            script_name = filename
+            scripts[script_name] = {
+                'path': os.path.join(script_path, '__main__.py'),
+                'status': 'stopped',
+                'log_file': f'logs/{script_name}.log',
+                'args': []  # Default empty arguments
             }
     return scripts
 
@@ -49,15 +59,16 @@ def index():
     return render_template('index.html', scripts=script_status, autostart=autostart_settings)
 
 def start_script_logic(script_name):
-    """Запускает скрипт без использования redirect или url_for."""
+    """Запускает скрипт с учётом аргументов."""
     if script_name in script_status:
         script_path = script_status[script_name]['path']
         log_file = script_status[script_name]['log_file']
+        args = autostart_settings.get(script_name, {}).get('args', [])
         try:
             with open(log_file, 'w') as log:
-                subprocess.Popen(['python3', script_path], stdout=log, stderr=log, text=True)
+                subprocess.Popen(['python3', script_path] + args, stdout=log, stderr=log, text=True)
             script_status[script_name]['status'] = 'running'
-            logging.info(f'Started script: {script_name}')
+            logging.info(f'Started script: {script_name} with args: {args}')
         except Exception as e:
             logging.error(f"Failed to start script {script_name}: {e}")
 
@@ -76,9 +87,10 @@ def stop_script(script_name):
 
 @app.route('/autostart/<script_name>', methods=['POST'])
 def toggle_autostart(script_name):
-    autostart_settings[script_name] = not autostart_settings.get(script_name, False)
+    autostart_settings[script_name] = autostart_settings.get(script_name, {})
+    autostart_settings[script_name]['enabled'] = not autostart_settings[script_name].get('enabled', False)
     save_autostart_settings(autostart_settings)
-    logging.info(f'Toggled autostart for script: {script_name} to {autostart_settings[script_name]}')
+    logging.info(f'Toggled autostart for script: {script_name} to {autostart_settings[script_name]["enabled"]}')
     return redirect(url_for('index'))
 
 @app.route('/logs/<script_name>')
@@ -93,6 +105,16 @@ def view_logs(script_name):
             return render_template('logs.html', script_name=script_name, log_content="Log file not found.")
     return "Script not found", 404
 
+@app.route('/set_args/<script_name>', methods=['POST'])
+def set_args(script_name):
+    if script_name in script_status:
+        args = request.form.get('args', '').split()
+        autostart_settings[script_name] = autostart_settings.get(script_name, {})
+        autostart_settings[script_name]['args'] = args
+        save_autostart_settings(autostart_settings)
+        logging.info(f'Set arguments for script: {script_name} to {args}')
+    return redirect(url_for('index'))
+
 def is_script_running(script_name):
     script_path = script_status[script_name]['path']
     result = subprocess.run(['pgrep', '-f', script_path], stdout=subprocess.PIPE)
@@ -100,8 +122,8 @@ def is_script_running(script_name):
 
 def start_autostart_scripts():
     """Запускает все скрипты, включённые в автозапуск."""
-    for script_name, enabled in autostart_settings.items():
-        if enabled and script_name in script_status:
+    for script_name, settings in autostart_settings.items():
+        if settings.get('enabled') and script_name in script_status:
             start_script_logic(script_name)
 
 if __name__ == '__main__':
