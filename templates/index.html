@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Script Manager</title>
+    <style>
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        table {
+            border-collapse: collapse;
+            width: 80%;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ffffff;
+            padding: 10px;
+            text-align: center;
+        }
+        th {
+            background-color: #333333;
+        }
+        a, button {
+            color: #00bcd4;
+            text-decoration: none;
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+        a:hover, button:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <h1>Script Manager</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>Script</th>
+                <th>Status</th>
+                <th>Actions</th>
+                <th>Autostart</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for script_name, script in scripts.items() %}
+            <tr>
+                <td>{{ script_name }}</td>
+                <td>{{ script.status }}</td>
+                <td>
+                    {% if script.status == 'stopped' %}
+                    <a href="{{ url_for('start_script', script_name=script_name) }}">Start</a>
+                    {% else %}
+                    <a href="{{ url_for('stop_script', script_name=script_name) }}">Stop</a>
+                    {% endif %}
+                    <a href="{{ url_for('view_logs', script_name=script_name) }}">View Logs</a>
+                </td>
+                <td>
+                    <form action="{{ url_for('toggle_autostart', script_name=script_name) }}" method="post" style="display:inline;">
+                        <button type="submit">{{ 'Disable' if autostart.get(script_name, False) else 'Enable' }}</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
